@@ -1,12 +1,15 @@
 // Data layer — talks to the FastAPI backend. Dev: vite proxies /api → :8000.
 
-const get = (path) => fetch('/api' + path).then(r => r.json());
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
+const get = (path) => fetch(API_BASE + '/api' + path).then(r => r.json());
 const post = (path, body) =>
-  fetch('/api' + path, {
+  fetch(API_BASE + '/api' + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   }).then(r => r.json());
+
 
 export const api = {
   summary:  () => get('/summary'),

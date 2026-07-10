@@ -8,11 +8,18 @@ Single-user college trip tracker — no locking / concurrency machinery.
 import json
 import os
 import sqlite3
+import sys
+import tempfile
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+# Load local environment variables from .env
+load_dotenv()
 
 DB = Path(__file__).with_name("data.db")
 DIST = Path(__file__).parent.parent / "frontend" / "dist"
@@ -28,10 +35,65 @@ SEED_EXPENSES = []
 SEED_BUDGETS = []
 
 
+class ConnectionWrapper:
+    def __init__(self, conn, is_pg):
+        self.conn = conn
+        self.is_pg = is_pg
+        self.cursor = conn.cursor()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            self.conn.rollback()
+        else:
+            self.conn.commit()
+        self.cursor.close()
+        self.conn.close()
+
+    def execute(self, query, params=None):
+        if self.is_pg:
+            query = query.replace("?", "%s")
+        if params is None:
+            self.cursor.execute(query)
+        else:
+            self.cursor.execute(query, params)
+        return self
+
+    def executescript(self, script):
+        if self.is_pg:
+            # Replace AUTOINCREMENT with serial/identity for PG compatibility
+            pg_script = script.replace("seq INTEGER PRIMARY KEY AUTOINCREMENT", "seq SERIAL PRIMARY KEY")
+            self.cursor.execute(pg_script)
+        else:
+            self.conn.executescript(script)
+        return self
+
+    def fetchone(self):
+        return self.cursor.fetchone()
+
+    def fetchall(self):
+        return self.cursor.fetchall()
+
+
 def conn():
-    c = sqlite3.connect(DB)
-    c.row_factory = sqlite3.Row
-    return c
+    # If we are testing (detected by DB path or test name), fallback to local SQLite
+    is_test = "test" in str(DB).lower() or tempfile.gettempdir() in str(DB)
+    
+    url = os.environ.get("DATABASE_URL")
+    if url and not is_test:
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        c = psycopg2.connect(url, cursor_factory=RealDictCursor)
+        return ConnectionWrapper(c, is_pg=True)
+    else:
+        c = sqlite3.connect(DB)
+        c.row_factory = sqlite3.Row
+        return ConnectionWrapper(c, is_pg=False)
+
 
 
 def init():
@@ -89,6 +151,23 @@ class Pin(BaseModel):
 
 
 app = FastAPI(title="IV Expense Tracker")
+
+# Enable CORS for frontend deployment (Vercel) and local development
+origins = ["http://localhost:5173", "http://localhost:3000"]
+frontend_url = os.environ.get("FRONTEND_URL")
+if frontend_url:
+    origins.append(frontend_url)
+else:
+    origins.append("*")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins if "*" not in origins else ["*"],
+    allow_credentials=True if "*" not in origins else False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 
 @app.get("/api/summary")
