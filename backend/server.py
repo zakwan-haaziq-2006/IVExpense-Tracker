@@ -82,6 +82,17 @@ def conn():
     is_test = "test" in str(DB).lower() or tempfile.gettempdir() in str(DB)
     
     url = os.environ.get("DATABASE_URL")
+    if url:
+        url = url.strip()
+        # Handle cases where "DATABASE_URL=..." was pasted
+        if url.startswith("DATABASE_URL="):
+            url = url.replace("DATABASE_URL=", "", 1).strip()
+        # Strip potential surrounding quotes
+        if url.startswith('"') and url.endswith('"'):
+            url = url[1:-1].strip()
+        elif url.startswith("'") and url.endswith("'"):
+            url = url[1:-1].strip()
+
     if url and not is_test:
         import psycopg2
         from psycopg2.extras import RealDictCursor
@@ -93,6 +104,7 @@ def conn():
         c = sqlite3.connect(DB)
         c.row_factory = sqlite3.Row
         return ConnectionWrapper(c, is_pg=False)
+
 
 
 
