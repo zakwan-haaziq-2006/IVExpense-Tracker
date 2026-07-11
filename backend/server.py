@@ -44,11 +44,20 @@ SEED_BUDGETS = [
 ]
 
 
+# Initialize a global connection pool
+db_pool = None
+
+
 class ConnectionWrapper:
-    def __init__(self, conn, is_pg):
+    def __init__(self, conn, is_pg, pool=None):
         self.conn = conn
         self.is_pg = is_pg
-        self.cursor = conn.cursor()
+        self.pool = pool
+        if is_pg:
+            from psycopg2.extras import RealDictCursor
+            self.cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            self.cursor = conn.cursor()
 
     def __enter__(self):
         return self
@@ -59,7 +68,10 @@ class ConnectionWrapper:
         else:
             self.conn.commit()
         self.cursor.close()
-        self.conn.close()
+        if self.pool:
+            self.pool.putconn(self.conn)
+        else:
+            self.conn.close()
 
     def execute(self, query, params=None):
         if self.is_pg:
@@ -103,12 +115,29 @@ def conn():
             url = url[1:-1].strip()
 
     if url and not is_test:
+        global db_pool
         import psycopg2
-        from psycopg2.extras import RealDictCursor
+        from psycopg2.pool import ThreadedConnectionPool
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
-        c = psycopg2.connect(url, cursor_factory=RealDictCursor)
-        return ConnectionWrapper(c, is_pg=True)
+        
+        if db_pool is None:
+            db_pool = ThreadedConnectionPool(1, 10, url)
+            
+        try:
+            c = db_pool.getconn()
+            # Test connection with a quick query
+            with c.cursor() as cur:
+                cur.execute("SELECT 1")
+            return ConnectionWrapper(c, is_pg=True, pool=db_pool)
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            # Connection is dead. Try to close it, discard it, and open a new one
+            try:
+                db_pool.putconn(c, close=True)
+            except Exception:
+                pass
+            c = psycopg2.connect(url)
+            return ConnectionWrapper(c, is_pg=True, pool=None)
     else:
         c = sqlite3.connect(DB)
         c.row_factory = sqlite3.Row
@@ -189,6 +218,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+
+@app.get("/api/all")
+def get_all():
+    with conn() as c:
+        # 1. Summary
+        r = c.execute("SELECT * FROM summary WHERE id = 1").fetchone()
+        rows = c.execute("SELECT category, SUM(amount) AS amt FROM expenses GROUP BY category").fetchall()
+        total = sum(row["amt"] for row in rows)
+        cat_pct = sorted(([row["category"], round(row["amt"] / total * 100)] for row in rows),
+                         key=lambda x: -x[1]) if total else []
+        summary_data = {"received": r["received"], "spent": r["spent"], "contributors": r["contributors"],
+                        "inHand": r["in_hand"], "inAccount": r["in_account"], "categoryPct": cat_pct}
+        
+        # 2. Payments
+        p_rows = c.execute("SELECT name,mode,date,amount FROM payments ORDER BY seq DESC").fetchall()
+        payments_data = [dict(p) for p in p_rows]
+        
+        # 3. Expenses
+        e_rows = c.execute("SELECT id,reason,category,date,time,amount,proof FROM expenses ORDER BY seq DESC").fetchall()
+        expenses_data = [{**dict(e), "proof": bool(e["proof"])} for e in e_rows]
+        
+        # 4. Budgets
+        b_rows = c.execute("SELECT name,spent,target FROM budgets").fetchall()
+        budgets_data = [dict(b) for b in b_rows]
+        
+    return {
+        "summary": summary_data,
+        "payments": payments_data,
+        "expenses": expenses_data,
+        "budgets": budgets_data
+    }
 
 
 @app.get("/api/summary")

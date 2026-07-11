@@ -18,10 +18,8 @@ export default function App() {
   const [data, setData] = useState(null);
 
   const reload = useCallback(async () => {
-    const [summary, payments, expenses, budgets] = await Promise.all([
-      api.summary(), api.payments(), api.expenses(), api.budgets(),
-    ]);
-    setData({ summary, payments, expenses, budgets });
+    const allData = await api.allData();
+    setData(allData);
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
@@ -35,12 +33,16 @@ export default function App() {
   const nav = (s) => { setScreen(s); setSheet(null); };
 
   async function addPayment(p) {
-    await api.addPayment(p); await reload();
-    setSheet(null); setScreen('payments');
+    setSheet(null);
+    setScreen('payments');
+    await api.addPayment(p);
+    await reload();
   }
   async function addExpense(e) {
-    await api.addExpense(e); await reload();
-    setSheet(null); setScreen('expenses');
+    setSheet(null);
+    setScreen('expenses');
+    await api.addExpense(e);
+    await reload();
   }
 
   const dark = !!proof;

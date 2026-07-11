@@ -12,6 +12,7 @@ const post = (path, body) =>
 
 
 export const api = {
+  allData:  () => get('/all'),
   summary:  () => get('/summary'),
   payments: () => get('/payments'),
   expenses: () => get('/expenses'),
