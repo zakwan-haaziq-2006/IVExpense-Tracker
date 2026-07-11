@@ -32,7 +32,16 @@ SEED_SUMMARY = {
 }
 SEED_PAYMENTS = []
 SEED_EXPENSES = []
-SEED_BUDGETS = []
+# One budget row per category so the Expenses screen shows tracking bars and
+# add-expense's UPDATE budgets ... WHERE name = category actually hits a row.
+# ponytail: placeholder targets — there's no edit-budget UI, tune here if amounts differ.
+SEED_BUDGETS = [
+    {"name": "Food",          "spent": 0, "target": 15000},
+    {"name": "Transport",     "spent": 0, "target": 30000},
+    {"name": "Accommodation", "spent": 0, "target": 40000},
+    {"name": "Entry Fees",    "spent": 0, "target": 8000},
+    {"name": "Misc",          "spent": 0, "target": 7000},
+]
 
 
 class ConnectionWrapper:
@@ -186,8 +195,13 @@ app.add_middleware(
 def summary():
     with conn() as c:
         r = c.execute("SELECT * FROM summary WHERE id = 1").fetchone()
+        rows = c.execute("SELECT category, SUM(amount) AS amt FROM expenses GROUP BY category").fetchall()
+    # categoryPct is derived live from expenses (never stored) so the donut can't drift
+    total = sum(row["amt"] for row in rows)
+    cat_pct = sorted(([row["category"], round(row["amt"] / total * 100)] for row in rows),
+                     key=lambda x: -x[1]) if total else []
     return {"received": r["received"], "spent": r["spent"], "contributors": r["contributors"],
-            "inHand": r["in_hand"], "inAccount": r["in_account"], "categoryPct": json.loads(r["category_pct"])}
+            "inHand": r["in_hand"], "inAccount": r["in_account"], "categoryPct": cat_pct}
 
 
 @app.get("/api/payments")

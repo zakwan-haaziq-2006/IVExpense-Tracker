@@ -4,15 +4,6 @@ export const Ms = ({ children, size, style }) => (
   <span className="ms" style={{ fontSize: size, ...style }}>{children}</span>
 );
 
-export const StatusBar = ({ dark }) => (
-  <div className="sb" style={dark ? { color: '#7a8194' } : undefined}>
-    <span>9:41</span>
-    <span className="r" style={dark ? { color: '#7a8194' } : undefined}>
-      <Ms size={16}>signal_cellular_alt</Ms><Ms size={16}>wifi</Ms><Ms size={17}>battery_full</Ms>
-    </span>
-  </div>
-);
-
 export const ADMIN_NAV = [
   { id: 'dashboard', icon: 'grid_view', label: 'Dashboard' },
   { id: 'payments',  icon: 'account_balance_wallet', label: 'Payments' },

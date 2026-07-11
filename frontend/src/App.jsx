@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react';
-import { StatusBar } from './components.jsx';
 import { api } from './api.js';
 import {
   PinScreen, AdminDashboard, AdminPayments, AdminExpenses, AdminAnalysis,
@@ -75,7 +74,6 @@ export default function App() {
 
   return (
     <div className="fr" style={dark ? { background: '#0c1017' } : undefined}>
-      <StatusBar dark={dark} />
       {content}
     </div>
   );
