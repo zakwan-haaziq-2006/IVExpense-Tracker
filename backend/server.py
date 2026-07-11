@@ -86,6 +86,8 @@ class ConnectionWrapper:
         if self.is_pg:
             # Replace AUTOINCREMENT with serial/identity for PG compatibility
             pg_script = script.replace("seq INTEGER PRIMARY KEY AUTOINCREMENT", "seq SERIAL PRIMARY KEY")
+            # Convert expense ID to BIGINT to handle JS Date.now() timestamps (64-bit)
+            pg_script = pg_script.replace("id INTEGER PRIMARY KEY", "id BIGINT PRIMARY KEY")
             self.cursor.execute(pg_script)
         else:
             self.conn.executescript(script)
@@ -162,6 +164,11 @@ def init():
             CREATE TABLE IF NOT EXISTS budgets (
                 name TEXT PRIMARY KEY, spent REAL, target REAL);
         """)
+        if c.is_pg:
+            try:
+                c.execute("ALTER TABLE expenses ALTER COLUMN id TYPE BIGINT")
+            except Exception:
+                pass
         if c.execute("SELECT 1 FROM summary").fetchone():
             return
         s = SEED_SUMMARY
