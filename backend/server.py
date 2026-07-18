@@ -213,7 +213,11 @@ app = FastAPI(title="IV Expense Tracker")
 origins = ["http://localhost:5173", "http://localhost:3000"]
 frontend_url = os.environ.get("FRONTEND_URL")
 if frontend_url:
-    origins.append(frontend_url)
+    # Support comma-separated URLs in FRONTEND_URL
+    for url in frontend_url.split(","):
+        url = url.strip()
+        if url:
+            origins.append(url)
 else:
     origins.append("*")
 
